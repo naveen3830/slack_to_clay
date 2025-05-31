@@ -1,5 +1,4 @@
 name: Slack to Clay Data Sync
-
 on:
   schedule:
     # Runs every 15 minutes
@@ -13,24 +12,23 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
     
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
     
-    # Cache the timestamp file
-    - name: Cache timestamp file
-      uses: actions/cache@v3
-      with:
-        path: last_processed_timestamp.txt
-        key: slack-timestamp-${{ github.run_id }}
-        restore-keys: |
-          slack-timestamp-
-    
     - name: Install dependencies
       run: |
         pip install requests pandas python-dotenv
+    
+    - name: Configure Git
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
     
     - name: Run sync script
       env:
@@ -40,12 +38,22 @@ jobs:
       run: |
         python slack_to_clay.py
     
-    - name: Upload logs (optional)
+    - name: Commit and push state files
+      run: |
+        git add last_processed_timestamp.txt processed_fingerprints.txt || true
+        if ! git diff --staged --quiet; then
+          git commit -m "Update sync state - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          git push
+        else
+          echo "No state changes to commit"
+        fi
+    
+    - name: Upload logs
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: sync-logs
+        name: sync-logs-${{ github.run_number }}
         path: |
           visitors_sent_to_clay_*.csv
-          last_processed_timestamp.txt
         retention-days: 7
+        if-no-files-found: ignore
