@@ -33,10 +33,11 @@ jobs:
     
     - name: Upload logs (optional)
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: sync-logs
         path: |
-          visitors_sent_to_clay.csv
+          visitors_sent_to_clay_*.csv
           failed_clay_sends.csv
         retention-days: 7
+        if-no-files-found: ignore
