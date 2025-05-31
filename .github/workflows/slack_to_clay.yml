@@ -1,0 +1,42 @@
+name: Slack to Clay Data Sync
+
+on:
+  schedule:
+    # Runs every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests pandas python-dotenv
+    
+    - name: Run sync script
+      env:
+        SLACK_API_TOKEN: ${{ secrets.SLACK_API_TOKEN }}
+        CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        CLAY_WEBHOOK_URL: ${{ secrets.CLAY_WEBHOOK_URL }}
+      run: |
+        python slack_to_clay.py
+    
+    - name: Upload logs (optional)
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: sync-logs
+        path: |
+          visitors_sent_to_clay.csv
+          failed_clay_sends.csv
+        retention-days: 7
