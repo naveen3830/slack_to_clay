@@ -19,6 +19,15 @@ jobs:
       with:
         python-version: '3.9'
     
+    # Cache the timestamp file
+    - name: Cache timestamp file
+      uses: actions/cache@v3
+      with:
+        path: last_processed_timestamp.txt
+        key: slack-timestamp-${{ github.run_id }}
+        restore-keys: |
+          slack-timestamp-
+    
     - name: Install dependencies
       run: |
         pip install requests pandas python-dotenv
@@ -37,6 +46,6 @@ jobs:
       with:
         name: sync-logs
         path: |
-          visitors_sent_to_clay.csv
-          failed_clay_sends.csv
+          visitors_sent_to_clay_*.csv
+          last_processed_timestamp.txt
         retention-days: 7
