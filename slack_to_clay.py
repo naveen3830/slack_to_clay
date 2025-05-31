@@ -10,14 +10,18 @@ import threading
 from queue import Queue
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
+# Configuration
 SLACK_API_TOKEN = os.getenv('SLACK_API_TOKEN')
 CHANNEL_ID = os.getenv('CHANNEL_ID')
 CLAY_WEBHOOK_URL = os.getenv('CLAY_WEBHOOK_URL')
 
+# File to store last processed timestamp
 LAST_PROCESSED_FILE = 'last_processed_timestamp.txt'
 
+# Threading configuration
 MAX_WORKERS = 10
 RATE_LIMIT_DELAY = 0.1
 
@@ -35,8 +39,9 @@ class ThreadSafeCounter:
     def value(self):
         return self._value
 
+# Technical titles list
 TECHNICAL_TITLES = [
-"Solutions Architect",
+    "Solutions Architect",
     "Senior Vice President Of Engineering",
     "Senior Applied Scientist",
     "Software Engineer",
@@ -277,7 +282,8 @@ def get_channel_messages(channel_id, oldest_timestamp=None):
         'channel': channel_id,
         'limit': 100
     }
-
+    
+    # Only get messages newer than last processed timestamp
     if oldest_timestamp:
         params['oldest'] = str(oldest_timestamp)
 
@@ -443,64 +449,16 @@ def send_batch_to_clay_threaded(visitors_list):
     print(f"Completed! Successfully sent: {success_count}, Failed: {failed_count}")
     return success_count, failed_records
 
-def create_visitor_fingerprint(visitor_info):
-    """Create a more robust fingerprint for duplicate detection"""
-    import hashlib
-    
-    # Normalize and combine key identifying fields
-    name = str(visitor_info.get('Name', '')).lower().strip()
-    email = str(visitor_info.get('Email', '')).lower().strip()
-    linkedin = str(visitor_info.get('LinkedIn', '')).lower().strip()
-    company = str(visitor_info.get('Company', '')).lower().strip()
-    
-    # Remove common variations
-    linkedin = linkedin.replace('www.', '').replace('http://', '').replace('https://', '')
-    
-    # Create fingerprint
-    fingerprint_data = f"{name}|{email}|{linkedin}|{company}"
-    return hashlib.sha256(fingerprint_data.encode()).hexdigest()
-
-def load_processed_fingerprints():
-    """Load previously processed visitor fingerprints"""
-    fingerprints_file = 'processed_fingerprints.txt'
-    fingerprints = set()
-    
-    try:
-        if os.path.exists(fingerprints_file):
-            with open(fingerprints_file, 'r') as f:
-                fingerprints = set(line.strip() for line in f if line.strip())
-    except Exception as e:
-        print(f"Could not load fingerprints: {e}")
-    
-    return fingerprints
-
-def save_processed_fingerprints(fingerprints):
-    """Save processed visitor fingerprints"""
-    fingerprints_file = 'processed_fingerprints.txt'
-    
-    try:
-        with open(fingerprints_file, 'w') as f:
-            for fp in fingerprints:
-                f.write(f"{fp}\n")
-    except Exception as e:
-        print(f"Could not save fingerprints: {e}")
-
-def is_visitor_already_processed(visitor_info, processed_fingerprints):
-    """Check if visitor has already been processed"""
-    fingerprint = create_visitor_fingerprint(visitor_info)
-    return fingerprint in processed_fingerprints
-
 def process_and_send_visitors():
-    """Enhanced main function with better deduplication"""
+    """Main function to process new Slack messages and send to Clay"""
     print(f"Starting incremental sync at {datetime.now()}")
-    
-    # Load previously processed fingerprints
-    processed_fingerprints = load_processed_fingerprints()
-    print(f"Loaded {len(processed_fingerprints)} previously processed visitor fingerprints")
     
     # Get last processed timestamp
     last_timestamp = get_last_processed_timestamp()
-    print(f"Processing messages since: {datetime.fromtimestamp(last_timestamp)}")
+    if last_timestamp:
+        print(f"Processing messages since: {datetime.fromtimestamp(last_timestamp)}")
+    else:
+        print("First run - processing all messages")
     
     # Fetch messages
     messages = get_channel_messages(CHANNEL_ID, last_timestamp)
@@ -520,50 +478,34 @@ def process_and_send_visitors():
     
     if bot_messages.empty:
         print("No new bot messages found")
-        save_last_processed_timestamp(latest_timestamp)
+        # Still update timestamp to avoid reprocessing
+        if latest_timestamp:
+            save_last_processed_timestamp(latest_timestamp)
         return
     
     print(f"Found {len(bot_messages)} new bot messages")
     
-    # Extract visitor information with enhanced deduplication
+    # Extract visitor information
     visitor_data = []
-    new_fingerprints = set()
-    skipped_duplicates = 0
-    
     for _, message in bot_messages.iterrows():
         text = message.get('text', '')
         extracted_info = extract_visitor_info(text)
         
         if extracted_info and extracted_info.get('Name'):
-            # Check if already processed
-            if is_visitor_already_processed(extracted_info, processed_fingerprints):
-                skipped_duplicates += 1
-                continue
-            
-            # Check for duplicates in current batch
-            fingerprint = create_visitor_fingerprint(extracted_info)
-            if fingerprint in new_fingerprints:
-                skipped_duplicates += 1
-                continue
-            
-            new_fingerprints.add(fingerprint)
-            
             if 'ts' in message:
                 extracted_info['slack_timestamp'] = message['ts']
                 extracted_info['processed_date'] = datetime.now().isoformat()
-                extracted_info['visitor_fingerprint'] = fingerprint
-            
             visitor_data.append(extracted_info)
     
-    print(f"Skipped {skipped_duplicates} duplicate visitors")
-    
     if not visitor_data:
-        print("No new unique visitor data extracted from messages")
-        save_last_processed_timestamp(latest_timestamp)
+        print("No visitor data extracted from new messages")
+        if latest_timestamp:
+            save_last_processed_timestamp(latest_timestamp)
         return
     
-    print(f"Extracted data for {len(visitor_data)} unique new visitors")
+    print(f"Extracted data for {len(visitor_data)} new visitors")
     
+    # Filter for technical professionals
     if TECHNICAL_TITLES:
         technical_visitors = []
         for visitor in visitor_data:
@@ -591,7 +533,8 @@ def process_and_send_visitors():
     
     if not clean_visitors:
         print("No clean visitor data to send")
-        save_last_processed_timestamp(latest_timestamp)
+        if latest_timestamp:
+            save_last_processed_timestamp(latest_timestamp)
         return
     
     # Send to Clay
@@ -599,21 +542,10 @@ def process_and_send_visitors():
     success_count, failed_records = send_batch_to_clay_threaded(clean_visitors)
     end_time = time.time()
     
-    # Update processed fingerprints for successful sends
-    successful_fingerprints = set()
-    for visitor in clean_visitors:
-        if visitor.get('visitor_fingerprint'):
-            successful_fingerprints.add(visitor['visitor_fingerprint'])
-    
-    # Save updated fingerprints
-    all_fingerprints = processed_fingerprints.union(successful_fingerprints)
-    save_processed_fingerprints(all_fingerprints)
-    
     print(f"\n=== SUMMARY ===")
     print(f"Processing time: {end_time - start_time:.2f} seconds")
     print(f"Successfully sent: {success_count} new records")
     print(f"Failed: {len(failed_records)} records")
-    print(f"Total fingerprints tracked: {len(all_fingerprints)}")
     
     # Save data for reference
     if clean_visitors:
