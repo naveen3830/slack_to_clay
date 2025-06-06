@@ -1,59 +1,59 @@
-name: Slack to Clay Data Sync
-on:
-  schedule:
-    # Runs every 15 minutes
-    - cron: '*/15 * * * *'
-  workflow_dispatch: # Allows manual triggering
+# name: Slack to Clay Data Sync
+# on:
+#   schedule:
+#     # Runs every 15 minutes
+#     - cron: '*/15 * * * *'
+#   workflow_dispatch: # Allows manual triggering
 
-jobs:
-  sync-data:
-    runs-on: ubuntu-latest
+# jobs:
+#   sync-data:
+#     runs-on: ubuntu-latest
     
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
+#     steps:
+#     - name: Checkout repository
+#       uses: actions/checkout@v4
+#       with:
+#         token: ${{ secrets.GITHUB_TOKEN }}
+#         fetch-depth: 0
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+#     - name: Set up Python
+#       uses: actions/setup-python@v4
+#       with:
+#         python-version: '3.9'
     
-    - name: Install dependencies
-      run: |
-        pip install requests pandas python-dotenv
+#     - name: Install dependencies
+#       run: |
+#         pip install requests pandas python-dotenv
     
-    - name: Configure Git
-      run: |
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+#     - name: Configure Git
+#       run: |
+#         git config --global user.name 'github-actions[bot]'
+#         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
     
-    - name: Run sync script
-      env:
-        SLACK_API_TOKEN: ${{ secrets.SLACK_API_TOKEN }}
-        CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
-        CLAY_WEBHOOK_URL: ${{ secrets.CLAY_WEBHOOK_URL }}
-      run: |
-        python slack_to_clay.py
+#     - name: Run sync script
+#       env:
+#         SLACK_API_TOKEN: ${{ secrets.SLACK_API_TOKEN }}
+#         CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+#         CLAY_WEBHOOK_URL: ${{ secrets.CLAY_WEBHOOK_URL }}
+#       run: |
+#         python slack_to_clay.py
     
-    - name: Commit and push state files
-      run: |
-        git add last_processed_timestamp.txt processed_fingerprints.txt || true
-        if ! git diff --staged --quiet; then
-          git commit -m "Update sync state - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          git push
-        else
-          echo "No state changes to commit"
-        fi
+#     - name: Commit and push state files
+#       run: |
+#         git add last_processed_timestamp.txt processed_fingerprints.txt || true
+#         if ! git diff --staged --quiet; then
+#           git commit -m "Update sync state - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+#           git push
+#         else
+#           echo "No state changes to commit"
+#         fi
     
-    - name: Upload logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: sync-logs-${{ github.run_number }}
-        path: |
-          visitors_sent_to_clay_*.csv
-        retention-days: 7
-        if-no-files-found: ignore
+#     - name: Upload logs
+#       if: always()
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: sync-logs-${{ github.run_number }}
+#         path: |
+#           visitors_sent_to_clay_*.csv
+#         retention-days: 7
+#         if-no-files-found: ignore
